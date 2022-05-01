@@ -1,0 +1,12 @@
+[package]
+name = "capnproto-demo"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+capnp = "0.14"
+
+[build-dependencies]
+capnpc = "0.14"
+
