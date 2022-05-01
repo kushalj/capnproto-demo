@@ -1,5 +1,5 @@
 mod server;
 
 fn main() {
-    println!("Hello, world!");
+    let _ = server::point_demo::write_to_stream();
 }
