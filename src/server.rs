@@ -1,7 +1,14 @@
 #![allow(dead_code)]
 
+use capnp::capability::Promise;
+use capnp_rpc::{pry, rpc_twoparty_capnp, twoparty, RpcSystem};
+
+use futures::{AsyncReadExt, FutureExt};
+use std::net::ToSocketAddrs;
+
 #[path = "./schema/point_capnp.rs"]
-mod point_capnp;
+pub mod point_capnp;
+use point_capnp::point_tracker;
 
 pub mod point_demo {
     use crate::server::point_capnp::point;
@@ -40,4 +47,77 @@ pub mod point_demo {
 
         Ok(())
     }
+}
+
+pub struct Point {
+    x: f32,
+    y: f32,
+}
+
+struct PointTrackerImpl {
+    points: Vec<Point>,
+}
+
+impl point_tracker::Server for PointTrackerImpl {
+    fn add_point(
+        &mut self,
+        params: point_tracker::AddPointParams,
+        mut results: point_tracker::AddPointResults,
+    ) -> Promise<(), ::capnp::Error> {
+        let point_client = pry!(params.get()).get_p();
+
+        if let Ok(received_point) = point_client {
+            self.points.push(Point {
+                x: received_point.get_x(),
+                y: received_point.get_y(),
+            });
+        }
+        results.get().set_total_points(self.points.len() as u64);
+
+        Promise::ok(())
+    }
+}
+
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<String> = ::std::env::args().collect();
+    if args.len() != 3 {
+        println!("usage: {} server ADDRESS:PORT", args[0]);
+        return Ok(());
+    }
+
+    let addr = args[2]
+        .to_socket_addrs()
+        .unwrap()
+        .next()
+        .expect("could not parse address");
+
+    tokio::task::LocalSet::new()
+        .run_until(async move {
+            let listener = tokio::net::TcpListener::bind(&addr).await?;
+
+            // Cap'n Proto point_tracker client initialised here
+            let point_tracker_client: point_tracker::Client =
+                capnp_rpc::new_client(PointTrackerImpl { points: Vec::new() });
+
+            println!("Server running");
+            loop {
+                let (stream, _) = listener.accept().await?;
+                stream.set_nodelay(true)?;
+                let (reader, writer) =
+                    tokio_util::compat::TokioAsyncReadCompatExt::compat(stream).split();
+
+                let network = twoparty::VatNetwork::new(
+                    reader,
+                    writer,
+                    rpc_twoparty_capnp::Side::Server,
+                    Default::default(),
+                );
+
+                let rpc_system =
+                    RpcSystem::new(Box::new(network), Some(point_tracker_client.clone().client));
+
+                tokio::task::spawn_local(Box::pin(rpc_system.map(|_| ())));
+            }
+        })
+        .await
 }
