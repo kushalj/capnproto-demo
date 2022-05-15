@@ -1,4 +1,4 @@
-Cap'n Proto demo code for related article exploring this protocol.
+Cap'n Proto demo code for [related article](https://dev.to/kushalj/capn-proto-rpc-at-the-speed-of-rust-part-1-4joo) exploring this protocol.
 
 1. point_demo that creates, saves, and explores messaging and serialisation into the capnp data format
 2. client and server code for sending a point to a point-tracker (list of points)
